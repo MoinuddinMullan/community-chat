@@ -3,7 +3,9 @@ import { z } from 'zod';
 
 const envSchema = z.object({
   PORT: z.coerce.number().default(4000),
-  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  NODE_ENV: z.enum(['development', 'production', 'test']).default(
+    process.env.RENDER === 'true' ? 'production' : 'development',
+  ),
   MONGODB_URI: z.string().min(1),
   MONGODB_DB: z.string().min(1).default('community_chat'),
   MONGODB_DNS_SERVERS: z.string().default('').transform((value) => value.split(',').map((server) => server.trim()).filter(Boolean)),

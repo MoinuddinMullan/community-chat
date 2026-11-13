@@ -49,6 +49,28 @@ test('health endpoint returns ok', async () => {
   assert.equal(res.body.ok, true);
 });
 
+test('health and API report unavailable while MongoDB is disconnected', async () => {
+  await mongoose.disconnect();
+  try {
+    const health = await request(app).get('/health');
+    assert.equal(health.status, 503);
+    assert.deepEqual(health.body, {
+      ok: false,
+      status: 'starting',
+      database: 'disconnected',
+    });
+
+    const login = await request(app).post('/api/auth/login').send({
+      userId: 'offline_user',
+      password: '1234',
+    });
+    assert.equal(login.status, 503);
+    assert.equal(login.body.error.code, 'DATABASE_UNAVAILABLE');
+  } finally {
+    await mongoose.connect(mongoServer.getUri(), { dbName: 'community_chat_test' });
+  }
+});
+
 test('root endpoint returns an API status message', async () => {
   const res = await request(app).get('/');
   assert.equal(res.status, 200);

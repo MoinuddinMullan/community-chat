@@ -9,8 +9,10 @@ mongoose.connection.on('error', (error) => {
 
 export async function connectDB() {
   try {
-    if (env.MONGODB_DNS_SERVERS.length > 0) {
+    if (env.NODE_ENV !== 'production' && env.MONGODB_DNS_SERVERS.length > 0) {
       dns.setServers(env.MONGODB_DNS_SERVERS);
+    } else if (env.NODE_ENV === 'production' && env.MONGODB_DNS_SERVERS.length > 0) {
+      console.warn('Ignoring MONGODB_DNS_SERVERS in production; using the platform DNS resolver.');
     }
 
     await mongoose.connect(env.MONGODB_URI, {

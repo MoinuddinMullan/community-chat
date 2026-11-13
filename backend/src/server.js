@@ -25,15 +25,29 @@ server.on('error', (error) => {
 });
 
 async function start() {
-  await connectDB();
-  schedulePurgeJobs();
   server.listen(PORT, HOST, () => {
     console.log(`Server is running on port ${PORT}`);
   });
+
+  let retryDelayMs = 1000;
+  while (true) {
+    try {
+      await connectDB();
+      schedulePurgeJobs();
+      return;
+    } catch (error) {
+      console.error(
+        `MongoDB is unavailable; retrying in ${Math.round(retryDelayMs / 1000)} seconds.`,
+        error.message,
+      );
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+      retryDelayMs = Math.min(retryDelayMs * 2, 30000);
+    }
+  }
 }
 
 start().catch((error) => {
-  console.error('Backend startup failed; server will not accept requests.', error);
+  console.error('Backend initialization failed.', error);
   process.exit(1);
 });
 

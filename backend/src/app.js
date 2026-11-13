@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import mongoose from 'mongoose';
 import { env } from './config/env.js';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
@@ -37,6 +38,17 @@ app.use(express.json({ limit: '16kb' }));
 app.use(express.urlencoded({ extended: false }));
 app.use('/api/chats', express.raw({ type: 'application/octet-stream', limit: '2mb' }));
 app.use('/api/media', express.raw({ type: 'application/octet-stream', limit: env.MAX_IMAGE_BYTES }));
+app.use('/api', (req, res, next) => {
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({
+      error: {
+        code: 'DATABASE_UNAVAILABLE',
+        message: 'The service is temporarily unavailable. Please try again shortly.',
+      },
+    });
+  }
+  next();
+});
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/requests', requestRoutes);
@@ -52,6 +64,9 @@ app.get('/', (req, res) => {
 });
 
 app.get('/health', (req, res) => {
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({ ok: false, status: 'starting', database: 'disconnected' });
+  }
   res.json({ ok: true, status: 'healthy' });
 });
 
