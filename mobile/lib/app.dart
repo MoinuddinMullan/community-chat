@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import 'core/config.dart';
@@ -32,6 +33,17 @@ class CommunityApp extends StatelessWidget {
         title: AppConfig.appName,
         debugShowCheckedModeBanner: false,
         theme: CommunityTheme.light(),
+        builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
+          value: const SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: Brightness.dark,
+            statusBarBrightness: Brightness.light,
+            systemNavigationBarColor: AppColors.surface,
+            systemNavigationBarIconBrightness: Brightness.dark,
+            systemNavigationBarDividerColor: AppColors.surface,
+          ),
+          child: child ?? const SizedBox.shrink(),
+        ),
         home: const WelcomeScreen(),
       ),
     );

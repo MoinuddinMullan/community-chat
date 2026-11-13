@@ -1,10 +1,10 @@
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/material.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
 import '../core/config.dart';
+import '../core/theme.dart';
 import '../models/chat_item.dart';
 
 class CommunityApiService {
@@ -58,7 +58,7 @@ class CommunityApiService {
         timestamp: timestamp,
         unreadCount: int.tryParse('${item['unreadCount'] ?? 0}') ?? 0,
         online: true,
-        avatarColor: const Color(0xFF075E54),
+        avatarColor: AppColors.avatarFallbackBg,
         peerPublicKey: peer['publicKey']?.toString(),
       );
     }).toList();

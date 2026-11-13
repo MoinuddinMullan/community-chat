@@ -103,6 +103,71 @@ void main() {
     expect(find.text('Send connection request'), findsNothing);
   });
 
+  testWidgets('home navigation stays in sync at narrow width and larger text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final communityProvider = CommunityProvider();
+    addTearDown(communityProvider.dispose);
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => AuthProvider()),
+          ChangeNotifierProvider<CommunityProvider>.value(
+            value: communityProvider,
+          ),
+        ],
+        child: MaterialApp(
+          theme: CommunityTheme.light(),
+          home: Builder(
+            builder: (context) => MediaQuery(
+              data: MediaQuery.of(context)
+                  .copyWith(textScaler: const TextScaler.linear(1.3)),
+              child: const HomeScreen(),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    communityProvider.chats = [
+      ChatItem(
+        id: 'chat-1',
+        name: 'A very long community member name',
+        lastMessage: 'Encrypted message',
+        timestamp: DateTime.now(),
+        unreadCount: 12,
+        online: true,
+        avatarColor: AppColors.avatarFallbackBg,
+      ),
+    ];
+    communityProvider.notifyListeners();
+    await tester.pump();
+    expect(find.text('Encrypted message'), findsOneWidget);
+    expect(find.text('12'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    final navigationBar = find.byType(NavigationBar);
+    expect(tester.widget<NavigationBar>(navigationBar).selectedIndex, 0);
+
+    await tester.tap(
+      find.descendant(of: navigationBar, matching: find.text('Requests')),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.widget<NavigationBar>(navigationBar).selectedIndex, 1);
+
+    await tester.drag(find.byType(TabBarView), const Offset(-200, 0));
+    await tester.pumpAndSettle();
+    expect(tester.widget<NavigationBar>(navigationBar).selectedIndex, 2);
+    expect(tester.takeException(), isNull);
+  });
+
   test('chat history sender field maps to a normalized sender ID', () {
     final message = ChatMessage.fromJson({
       'id': 'message-1',

@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/theme.dart';
 import '../../models/chat_item.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/community_provider.dart';
@@ -59,7 +60,9 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
       _error = null;
     });
     try {
-      await context.read<CommunityProvider>().sendConnectionRequest(result.userId);
+      await context.read<CommunityProvider>().sendConnectionRequest(
+        result.userId,
+      );
       if (mounted) setState(() => _requestSent = true);
     } catch (error) {
       if (mounted) setState(() => _error = _errorMessage(error));
@@ -71,7 +74,9 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
   String _errorMessage(Object error) {
     if (error is DioException) {
       final body = error.response?.data;
-      if (body is Map && body['error'] is Map && body['error']['message'] is String) {
+      if (body is Map &&
+          body['error'] is Map &&
+          body['error']['message'] is String) {
         return body['error']['message'] as String;
       }
       if (error.response == null) {
@@ -132,7 +137,10 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
           ),
           if (_error != null) ...[
             const SizedBox(height: 16),
-            Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            Text(
+              _error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
           ],
           if (_result case final result?) ...[
             const SizedBox(height: 24),
@@ -140,29 +148,42 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
               child: ListTile(
                 contentPadding: const EdgeInsets.all(16),
                 leading: CircleAvatar(
-                  child: Text(result.displayName.characters.first.toUpperCase()),
+                  child: Text(
+                    result.displayName.characters.first.toUpperCase(),
+                  ),
                 ),
-                title: Text(result.displayName, style: const TextStyle(fontWeight: FontWeight.w700)),
+                title: Text(
+                  result.displayName,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
                 subtitle: Text('@${result.userId}'),
                 trailing: isSelf
                     ? const Text('You')
                     : _requestSent
-                        ? const Icon(Icons.check_circle, color: Colors.green)
-                        : null,
+                    ? const Icon(Icons.check_circle, color: AppColors.brand)
+                    : null,
               ),
             ),
             if (!isSelf) ...[
               const SizedBox(height: 12),
               FilledButton.icon(
-                onPressed: _isSendingRequest || _requestSent ? null : _sendRequest,
+                onPressed: _isSendingRequest || _requestSent
+                    ? null
+                    : _sendRequest,
                 icon: _isSendingRequest
                     ? const SizedBox(
                         width: 18,
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : Icon(_requestSent ? Icons.check_rounded : Icons.person_add_alt_1_rounded),
-                label: Text(_requestSent ? 'Request sent' : 'Send connection request'),
+                    : Icon(
+                        _requestSent
+                            ? Icons.check_rounded
+                            : Icons.person_add_alt_1_rounded,
+                      ),
+                label: Text(
+                  _requestSent ? 'Request sent' : 'Send connection request',
+                ),
               ),
             ],
           ],
