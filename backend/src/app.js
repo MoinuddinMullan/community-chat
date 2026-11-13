@@ -44,6 +44,13 @@ app.use('/api/contacts', contactRoutes);
 app.use('/api/chats', chatRoutes);
 app.use('/api/media', mediaRoutes);
 
+app.get('/', (req, res) => {
+  res.json({
+    status: 'active',
+    message: 'Community Chat API is running',
+  });
+});
+
 app.get('/health', (req, res) => {
   res.json({ ok: true, status: 'healthy' });
 });

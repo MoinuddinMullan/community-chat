@@ -49,6 +49,15 @@ test('health endpoint returns ok', async () => {
   assert.equal(res.body.ok, true);
 });
 
+test('root endpoint returns an API status message', async () => {
+  const res = await request(app).get('/');
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body, {
+    status: 'active',
+    message: 'Community Chat API is running',
+  });
+});
+
 test('allows configured web origins to preflight API requests', async () => {
   const res = await request(app)
     .options('/api/auth/login')

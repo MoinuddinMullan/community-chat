@@ -24,21 +24,17 @@ server.on('error', (error) => {
   process.exit(1);
 });
 
-// Start the HTTP server immediately so Render detects an open port
-server.listen(PORT, HOST, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
-
-// Connect to the database and schedule jobs in the background
-async function init() {
-  try {
-    await connectDB();
-    schedulePurgeJobs();
-  } catch (error) {
-    console.error('Background initialization failed:', error);
-  }
+async function start() {
+  await connectDB();
+  schedulePurgeJobs();
+  server.listen(PORT, HOST, () => {
+    console.log(`Server is running on port ${PORT}`);
+  });
 }
 
-init();
+start().catch((error) => {
+  console.error('Backend startup failed; shutting down.', error);
+  process.exit(1);
+});
 
 export { app, io, server };
