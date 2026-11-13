@@ -3,6 +3,9 @@ import mongoose from 'mongoose';
 import { env } from './env.js';
 
 mongoose.set('sanitizeFilter', true);
+mongoose.connection.on('error', (error) => {
+  console.error('MongoDB connection error:', error);
+});
 
 export async function connectDB() {
   try {
@@ -18,7 +21,7 @@ export async function connectDB() {
     return mongoose.connection;
   } catch (error) {
     console.error('MongoDB connection failed. Check DNS resolution, Atlas Network Access, and URL-encode special characters in the DB password.');
-    console.error(error.message);
+    console.error(error);
     throw error;
   }
 }

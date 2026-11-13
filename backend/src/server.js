@@ -7,6 +7,8 @@ import { attachSocketHandlers } from './sockets/index.js';
 import { schedulePurgeJobs } from './jobs/purge.js';
 
 const server = http.createServer(app);
+const PORT = Number(process.env.PORT || env.PORT || 5000);
+const HOST = '0.0.0.0';
 const io = new Server(server, {
   transports: ['websocket'],
   allowEIO3: false,
@@ -17,17 +19,21 @@ const io = new Server(server, {
 app.set('io', io);
 attachSocketHandlers(io);
 
+server.on('error', (error) => {
+  console.error('HTTP server failed to start:', error);
+  process.exit(1);
+});
+
 async function start() {
   await connectDB();
   schedulePurgeJobs();
-  server.listen(env.PORT, () => {
-    console.log(`Community Chat backend listening on http://localhost:${env.PORT}`);
+  server.listen(PORT, HOST, () => {
+    console.log(`Server is running on port ${PORT}`);
   });
 }
 
 start().catch((error) => {
-  console.error('Failed to start server.');
-  console.error(error.message);
+  console.error('Backend startup failed; shutting down.', error);
   process.exit(1);
 });
 
