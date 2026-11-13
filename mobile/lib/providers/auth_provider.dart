@@ -173,8 +173,12 @@ class AuthProvider extends ChangeNotifier {
   String _getErrorMessage(Object error) {
     if (error is DioException) {
       final response = error.response?.data;
+      final statusCode = error.response?.statusCode;
       if (response is Map) {
         final details = response['error'];
+        if (statusCode != null && statusCode >= 500) {
+          return 'The server is temporarily unavailable. Please try again in a moment.';
+        }
         if (details is Map && details['message'] is String) {
           return details['message'] as String;
         }
