@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 import '../../models/chat_item.dart';
 import 'full_screen_image_viewer.dart';
+import 'message_metadata.dart';
 
 class ImageMessageBubble extends StatelessWidget {
   const ImageMessageBubble({
@@ -150,6 +151,10 @@ class ImageMessageBubble extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
                 child: Text(message.caption!),
               ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 8, 2),
+              child: MessageMetadata(message: message, isMe: isMe),
+            ),
           ],
         ),
       ),

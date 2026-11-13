@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
@@ -36,7 +37,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   List<int>? _chatKey;
   bool _isPickingImage = false;
   bool _isClearingChat = false;
+  bool _isMarkingRead = false;
+  bool _markReadQueued = false;
   int _pendingSends = 0;
+  final Set<String> _selectedMessageIds = {};
 
   @override
   void initState() {
@@ -46,6 +50,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       _receiveSocketMessage,
       onMessageDeleted: _handleMessageDeleted,
       onChatCleared: _handleChatCleared,
+      onMessagesRead: _handleMessagesRead,
     );
   }
 
@@ -63,6 +68,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           if (mounted && requestId == _historyRequestId) {
             _historyMessages = decodedMessages;
             _scheduleExpiry();
+            unawaited(_markChatRead());
           }
           return decodedMessages;
         });
@@ -161,6 +167,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             !message.expiresAt!.isAfter(DateTime.now()))) {
       return;
     }
+    if (!_isCurrentUserMessage(message)) {
+      unawaited(_markChatRead());
+    }
     final pending = message.type == 'image' && message.imageUrl != null
         ? message.copyWith(isLoadingImage: true)
         : message;
@@ -204,6 +213,17 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 
   void _upsertAdditionalMessage(ChatMessage message) {
+    final previous = _additionalMessages.where(
+      (existing) =>
+          existing.id == message.id ||
+          (message.clientId != null && existing.clientId == message.clientId),
+    );
+    if (message.readAt == null && previous.isNotEmpty) {
+      final previousReadAt = previous.first.readAt;
+      if (previousReadAt != null) {
+        message = message.copyWith(readAt: previousReadAt);
+      }
+    }
     _additionalMessages.removeWhere(
       (existing) =>
           existing.id == message.id ||
@@ -252,14 +272,60 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       _historyRequestId++;
       _historyMessages.removeWhere((message) => message.id == messageId);
       _additionalMessages.removeWhere((message) => message.id == messageId);
+      _selectedMessageIds.remove(messageId);
       _messagesFuture = Future.value(List.of(_historyMessages));
       _scheduleExpiry();
     });
   }
 
+  void _handleMessagesRead(
+    String chatId,
+    List<String> messageIds,
+    DateTime readAt,
+  ) {
+    if (!mounted || chatId != widget.chat.id) return;
+    final ids = messageIds.toSet();
+    setState(() {
+      for (var index = 0; index < _historyMessages.length; index++) {
+        final message = _historyMessages[index];
+        if (ids.contains(message.id)) {
+          _historyMessages[index] = message.copyWith(readAt: readAt);
+        }
+      }
+      for (var index = 0; index < _additionalMessages.length; index++) {
+        final message = _additionalMessages[index];
+        if (ids.contains(message.id)) {
+          _additionalMessages[index] = message.copyWith(readAt: readAt);
+        }
+      }
+      _messagesFuture = Future.value(List.of(_historyMessages));
+    });
+  }
+
+  Future<void> _markChatRead() async {
+    if (_isMarkingRead) {
+      _markReadQueued = true;
+      return;
+    }
+    _isMarkingRead = true;
+    try {
+      do {
+        _markReadQueued = false;
+        await context.read<CommunityProvider>().markChatRead(widget.chat.id);
+      } while (mounted && _markReadQueued);
+    } catch (error) {
+      if (mounted) {
+        _showMessageError('Read status could not be updated: $error');
+      }
+    } finally {
+      _isMarkingRead = false;
+    }
+  }
+
   void _clearVisibleMessages() {
     _historyRequestId++;
     _expiryTimer?.cancel();
+    _selectedMessageIds.clear();
     _historyMessages = [];
     _additionalMessages.clear();
     _messagesFuture = Future.value(const <ChatMessage>[]);
@@ -278,13 +344,28 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             currentUserId.trim().toLowerCase();
   }
 
-  Future<void> _confirmDeleteMessage(ChatMessage message) async {
+  void _toggleMessageSelection(ChatMessage message) {
+    if (!_isCurrentUserMessage(message) || message.id.startsWith('local:')) {
+      _showMessageError('You can select and delete messages you sent.');
+      return;
+    }
+    setState(() {
+      if (!_selectedMessageIds.add(message.id)) {
+        _selectedMessageIds.remove(message.id);
+      }
+    });
+  }
+
+  Future<void> _deleteSelectedMessages() async {
+    if (_selectedMessageIds.isEmpty) return;
     final shouldDelete = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete message?'),
-        content: const Text(
-          'This removes the message and any attached photo from both sides of this chat.',
+        title: Text(
+          'Delete ${_selectedMessageIds.length == 1 ? 'message' : 'messages'}?',
+        ),
+        content: Text(
+          'This removes ${_selectedMessageIds.length == 1 ? 'this message' : 'these messages'} and any attached photos from both sides of this chat.',
         ),
         actions: [
           TextButton(
@@ -301,15 +382,58 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     if (shouldDelete != true || !mounted) return;
 
     try {
-      await context.read<CommunityProvider>().deleteMessage(
+      final messageIds = List<String>.of(_selectedMessageIds);
+      await context.read<CommunityProvider>().deleteMessages(
         widget.chat.id,
-        message.id,
+        messageIds,
       );
       if (!mounted) return;
-      _handleMessageDeleted(widget.chat.id, message.id);
+      setState(() {
+        _selectedMessageIds.clear();
+        _historyRequestId++;
+        _historyMessages.removeWhere(
+          (message) => messageIds.contains(message.id),
+        );
+        _additionalMessages.removeWhere(
+          (message) => messageIds.contains(message.id),
+        );
+        _messagesFuture = Future.value(List.of(_historyMessages));
+        _scheduleExpiry();
+      });
     } catch (error) {
-      if (mounted) _showMessageError('Message could not be deleted: $error');
+      if (mounted) {
+        _showMessageError('Selected messages could not be deleted: $error');
+      }
     }
+  }
+
+  Widget _dateSeparator(DateTime? timestamp) {
+    if (timestamp == null) return const SizedBox.shrink();
+    final date = timestamp.toLocal();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final messageDay = DateTime(date.year, date.month, date.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final label = messageDay == today
+        ? 'Today'
+        : messageDay == yesterday
+        ? 'Yesterday'
+        : DateFormat('EEEE, d MMMM yyyy').format(date);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Center(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: Colors.white.withAlpha(220),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            child: Text(label, style: const TextStyle(fontSize: 13)),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _confirmClearChat() async {
@@ -684,40 +808,57 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     return Scaffold(
       appBar: AppBar(
         actions: [
-          IconButton(
-            tooltip: 'Clear chat',
-            onPressed: _isClearingChat ? null : _confirmClearChat,
-            icon: const Icon(Icons.delete_sweep_outlined),
-          ),
-        ],
-        title: Row(
-          children: [
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: widget.chat.avatarColor,
-              child: Text(
-                widget.chat.name.substring(0, 1).toUpperCase(),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+          if (_selectedMessageIds.isNotEmpty) ...[
+            IconButton(
+              tooltip: 'Cancel selection',
+              onPressed: () => setState(_selectedMessageIds.clear),
+              icon: const Icon(Icons.close),
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            IconButton(
+              tooltip: 'Delete selected messages',
+              onPressed: _deleteSelectedMessages,
+              icon: const Icon(Icons.delete_outline),
+            ),
+          ] else
+            IconButton(
+              tooltip: 'Clear chat',
+              onPressed: _isClearingChat ? null : _confirmClearChat,
+              icon: const Icon(Icons.delete_sweep_outlined),
+            ),
+        ],
+        title: _selectedMessageIds.isNotEmpty
+            ? Text('${_selectedMessageIds.length} selected')
+            : Row(
                 children: [
-                  Text(widget.chat.name, style: const TextStyle(fontSize: 16)),
-                  Text(
-                    widget.chat.online ? 'online' : 'offline',
-                    style: const TextStyle(fontSize: 12),
+                  CircleAvatar(
+                    radius: 16,
+                    backgroundColor: widget.chat.avatarColor,
+                    child: Text(
+                      widget.chat.name.substring(0, 1).toUpperCase(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.chat.name,
+                          style: const TextStyle(fontSize: 16),
+                        ),
+                        Text(
+                          widget.chat.online ? 'online' : 'offline',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
-            ),
-          ],
-        ),
       ),
       body: Container(
         color: const Color(0xFFEDE7E3),
@@ -758,6 +899,22 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                       final isOwnSavedMessage =
                           _isCurrentUserMessage(message) &&
                           !message.id.startsWith('local:');
+                      final isSelected = _selectedMessageIds.contains(
+                        message.id,
+                      );
+                      final previousCreatedAt = index > 0
+                          ? messages[index - 1].createdAt
+                          : null;
+                      final currentCreatedAt = message.createdAt;
+                      final showDateSeparator =
+                          currentCreatedAt != null &&
+                          (previousCreatedAt == null ||
+                              currentCreatedAt.toLocal().year !=
+                                  previousCreatedAt.toLocal().year ||
+                              currentCreatedAt.toLocal().month !=
+                                  previousCreatedAt.toLocal().month ||
+                              currentCreatedAt.toLocal().day !=
+                                  previousCreatedAt.toLocal().day);
                       final bubble = ChatMessageBubble(
                         message: message,
                         currentUserId: currentUserId,
@@ -768,11 +925,37 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                             ? () => _retryImage(message)
                             : null,
                       );
-                      if (!isOwnSavedMessage) return bubble;
-                      return GestureDetector(
-                        onLongPress: () => _confirmDeleteMessage(message),
-                        onSecondaryTap: () => _confirmDeleteMessage(message),
-                        child: bubble,
+                      return Column(
+                        children: [
+                          if (showDateSeparator)
+                            _dateSeparator(currentCreatedAt),
+                          GestureDetector(
+                            onLongPress: () {
+                              if (isOwnSavedMessage) {
+                                _toggleMessageSelection(message);
+                              } else {
+                                _showMessageError(
+                                  'You can select and delete messages you sent.',
+                                );
+                              }
+                            },
+                            onSecondaryTap: isOwnSavedMessage
+                                ? () => _toggleMessageSelection(message)
+                                : null,
+                            onTap: _selectedMessageIds.isNotEmpty
+                                ? () => _toggleMessageSelection(message)
+                                : null,
+                            child: Container(
+                              color: isSelected
+                                  ? Colors.black.withAlpha(20)
+                                  : null,
+                              child: IgnorePointer(
+                                ignoring: _selectedMessageIds.isNotEmpty,
+                                child: bubble,
+                              ),
+                            ),
+                          ),
+                        ],
                       );
                     },
                   );

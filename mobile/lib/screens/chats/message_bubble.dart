@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 import '../../models/chat_item.dart';
 import 'image_message_bubble.dart';
+import 'message_metadata.dart';
 
 class ChatMessageBubble extends StatelessWidget {
   const ChatMessageBubble({
@@ -54,7 +55,15 @@ class ChatMessageBubble extends StatelessWidget {
             bottomRight: Radius.circular(isMe ? 4 : 16),
           ),
         ),
-        child: Text(message.text),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(message.text),
+            const SizedBox(height: 3),
+            MessageMetadata(message: message, isMe: isMe),
+          ],
+        ),
       ),
     );
   }

@@ -22,6 +22,19 @@ class ChatItem {
   final bool online;
   final Color avatarColor;
   final String? peerPublicKey;
+
+  ChatItem copyWith({int? unreadCount}) {
+    return ChatItem(
+      id: id,
+      name: name,
+      lastMessage: lastMessage,
+      timestamp: timestamp,
+      unreadCount: unreadCount ?? this.unreadCount,
+      online: online,
+      avatarColor: avatarColor,
+      peerPublicKey: peerPublicKey,
+    );
+  }
 }
 
 class ContactRequestItem {
@@ -76,6 +89,7 @@ class ChatMessage {
       text: (item['payload'] ?? '').toString(),
       clientId: item['clientId']?.toString(),
       createdAt: DateTime.tryParse(item['createdAt']?.toString() ?? ''),
+      readAt: DateTime.tryParse(item['readAt']?.toString() ?? ''),
       expiresAt: DateTime.tryParse(item['expiresAt']?.toString() ?? ''),
       type: item['type'] == 'image' ? 'image' : 'text',
       imageUrl: item['imageUrl']?.toString(),
@@ -100,6 +114,7 @@ class ChatMessage {
     this.encryptedImageBytes,
     this.clientId,
     this.createdAt,
+    this.readAt,
     this.expiresAt,
     this.localImageBytes,
     this.isUploading = false,
@@ -119,6 +134,7 @@ class ChatMessage {
   final Uint8List? encryptedImageBytes;
   final String? clientId;
   final DateTime? createdAt;
+  final DateTime? readAt;
   final DateTime? expiresAt;
   final Uint8List? localImageBytes;
   final bool isUploading;
@@ -139,6 +155,7 @@ class ChatMessage {
     bool clearEncryptedImageBytes = false,
     String? clientId,
     DateTime? createdAt,
+    DateTime? readAt,
     DateTime? expiresAt,
     Uint8List? localImageBytes,
     bool clearLocalImageBytes = false,
@@ -161,6 +178,7 @@ class ChatMessage {
           : encryptedImageBytes ?? this.encryptedImageBytes,
       clientId: clientId ?? this.clientId,
       createdAt: createdAt ?? this.createdAt,
+      readAt: readAt ?? this.readAt,
       expiresAt: expiresAt ?? this.expiresAt,
       localImageBytes: clearLocalImageBytes
           ? null

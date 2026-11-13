@@ -66,6 +66,8 @@ class CommunityProvider extends ChangeNotifier {
     void Function(String chatId, ChatMessage message) onMessage, {
     void Function(String chatId, String messageId)? onMessageDeleted,
     void Function(String chatId)? onChatCleared,
+    void Function(String chatId, List<String> messageIds, DateTime readAt)?
+    onMessagesRead,
   }) {
     if (_accessToken.isEmpty) {
       throw StateError('Sign in before connecting to chat updates.');
@@ -74,6 +76,7 @@ class CommunityProvider extends ChangeNotifier {
       onMessage,
       onMessageDeleted: onMessageDeleted,
       onChatCleared: onChatCleared,
+      onMessagesRead: onMessagesRead,
     );
   }
 
@@ -155,6 +158,24 @@ class CommunityProvider extends ChangeNotifier {
       throw StateError('Sign in before deleting a message.');
     }
     return _service.deleteMessage(chatId, messageId);
+  }
+
+  Future<void> deleteMessages(String chatId, List<String> messageIds) {
+    if (_accessToken.isEmpty) {
+      throw StateError('Sign in before deleting messages.');
+    }
+    return _service.deleteMessages(chatId, messageIds);
+  }
+
+  Future<void> markChatRead(String chatId) async {
+    if (_accessToken.isEmpty) {
+      throw StateError('Sign in before marking a chat as read.');
+    }
+    await _service.markChatRead(chatId);
+    chats = chats
+        .map((chat) => chat.id == chatId ? chat.copyWith(unreadCount: 0) : chat)
+        .toList();
+    notifyListeners();
   }
 
   Future<void> clearChat(String chatId) {

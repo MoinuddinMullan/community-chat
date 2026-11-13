@@ -10,6 +10,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
+import 'package:intl/intl.dart';
 
 import 'package:community_chat/core/theme.dart';
 import 'package:community_chat/models/chat_item.dart';
@@ -111,6 +112,18 @@ void main() {
 
     expect(message.senderId, 'User-A');
     expect(message.text, 'hello');
+  });
+
+  test('chat history retains read receipt timestamp', () {
+    final message = ChatMessage.fromJson({
+      'id': 'message-read',
+      'senderId': 'user-a',
+      'payload': 'enc1:ZW5jcnlwdGVk',
+      'createdAt': '2026-01-02T13:05:00.000Z',
+      'readAt': '2026-01-02T13:06:00.000Z',
+    });
+
+    expect(message.readAt, DateTime.parse('2026-01-02T13:06:00.000Z'));
   });
 
   test(
@@ -285,10 +298,12 @@ void main() {
     );
 
     final bubble = tester.widget<Align>(
-      find.descendant(
-        of: find.byType(ImageMessageBubble),
-        matching: find.byType(Align),
-      ),
+      find
+          .descendant(
+            of: find.byType(ImageMessageBubble),
+            matching: find.byType(Align),
+          )
+          .first,
     );
     expect(bubble.alignment, Alignment.centerLeft);
     final bubbleContainer = tester.widget<Container>(
@@ -372,4 +387,59 @@ void main() {
       expect((bubble.decoration! as BoxDecoration).color, Colors.white);
     },
   );
+
+  testWidgets('outgoing message shows its time and blue read ticks', (
+    tester,
+  ) async {
+    final message = ChatMessage(
+      id: 'message-read',
+      senderId: 'user-a',
+      text: 'hello',
+      createdAt: DateTime(2026, 1, 2, 13, 5),
+      readAt: DateTime(2026, 1, 2, 13, 6),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ChatMessageBubble(
+            message: message,
+            currentUserId: 'user-a',
+            maxWidth: 300,
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.text(DateFormat.jm().format(message.createdAt!)),
+      findsOneWidget,
+    );
+    final ticks = tester.widget<Icon>(find.byIcon(Icons.done_all_rounded));
+    expect(ticks.color, const Color(0xFF34B7F1));
+  });
+
+  testWidgets('sent but unread message shows gray double ticks', (
+    tester,
+  ) async {
+    final message = ChatMessage(
+      id: 'message-sent',
+      senderId: 'user-a',
+      text: 'hello',
+      createdAt: DateTime(2026, 1, 2, 13, 5),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ChatMessageBubble(
+            message: message,
+            currentUserId: 'user-a',
+            maxWidth: 300,
+          ),
+        ),
+      ),
+    );
+
+    final ticks = tester.widget<Icon>(find.byIcon(Icons.done_all_rounded));
+    expect(ticks.color, Colors.grey.shade700);
+  });
 }

@@ -240,6 +240,17 @@ class CommunityApiService {
     await _dio.delete('/api/chats/$chatId/messages/$messageId');
   }
 
+  Future<void> deleteMessages(String chatId, List<String> messageIds) async {
+    await _dio.post(
+      '/api/chats/$chatId/messages/delete',
+      data: {'messageIds': messageIds},
+    );
+  }
+
+  Future<void> markChatRead(String chatId) async {
+    await _dio.post('/api/chats/$chatId/read');
+  }
+
   Future<void> clearChat(String chatId) async {
     await _dio.delete('/api/chats/$chatId/messages');
   }
@@ -248,6 +259,8 @@ class CommunityApiService {
     void Function(String chatId, ChatMessage message) onMessage, {
     void Function(String chatId, String messageId)? onMessageDeleted,
     void Function(String chatId)? onChatCleared,
+    void Function(String chatId, List<String> messageIds, DateTime readAt)?
+    onMessagesRead,
   }) {
     final socket = io.io(AppConfig.apiBaseUrl, <String, dynamic>{
       'transports': ['websocket'],
@@ -276,6 +289,19 @@ class CommunityApiService {
     socket.on('chat:cleared', (data) {
       if (data is! Map || data['chatId'] == null) return;
       onChatCleared?.call(data['chatId'].toString());
+    });
+    socket.on('chat:read', (data) {
+      if (data is! Map ||
+          data['chatId'] == null ||
+          data['messageIds'] is! List) {
+        return;
+      }
+      final readAt = DateTime.tryParse(data['readAt']?.toString() ?? '');
+      if (readAt == null) return;
+      final messageIds = (data['messageIds'] as List)
+          .map((id) => id.toString())
+          .toList();
+      onMessagesRead?.call(data['chatId'].toString(), messageIds, readAt);
     });
     socket.connect();
     return socket;

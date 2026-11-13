@@ -28,6 +28,13 @@ const messageSchema = z.discriminatedUnion('type', [
   }).strict(),
 ]);
 
+const deleteMessagesSchema = z.object({
+  messageIds: z.array(z.string().regex(/^[a-f\d]{24}$/i))
+    .min(1)
+    .max(100)
+    .refine((ids) => new Set(ids).size === ids.length, 'Message IDs must be unique.'),
+}).strict();
+
 function isParticipant(chat, userId) {
   return chat.participants.some((participant) => participant.toString() === userId);
 }
@@ -184,8 +191,65 @@ router.post('/:chatId/read', requireAuth, asyncHandler(async (req, res) => {
   const chat = await Chat.findById(req.params.chatId);
   if (!chat || !isParticipant(chat, req.user.sub)) return res.status(404).json({ error: { code: 'CHAT_NOT_FOUND', message: 'Chat not found.' } });
 
-  await Message.updateMany({ chat: chat._id, sender: mongoose.trusted({ $ne: req.user.sub }), readAt: null }, { readAt: new Date() });
+  const unreadMessages = await Message.find({
+    chat: chat._id,
+    sender: mongoose.trusted({ $ne: req.user.sub }),
+    readAt: null,
+    expiresAt: mongoose.trusted({ $gt: new Date() }),
+  }).select('_id');
+  if (unreadMessages.length > 0) {
+    const readAt = new Date();
+    const messageIds = unreadMessages.map((message) => message._id.toString());
+    await Message.updateMany(
+      { _id: mongoose.trusted({ $in: unreadMessages.map((message) => message._id) }), readAt: null },
+      { $set: { readAt } },
+    );
+    const otherParticipant = chat.participants.find(
+      (participant) => participant.toString() !== req.user.sub,
+    );
+    req.app.get('io')
+      ?.to(`user:${otherParticipant.toString()}`)
+      .emit('chat:read', {
+        chatId: chat._id.toString(),
+        messageIds,
+        readAt,
+      });
+  }
   res.json({ ok: true });
+}));
+
+router.post('/:chatId/messages/delete', requireAuth, validateBody(deleteMessagesSchema), asyncHandler(async (req, res) => {
+  const chat = await Chat.findById(req.params.chatId);
+  if (!chat || !isParticipant(chat, req.user.sub)) return res.status(404).json({ error: { code: 'CHAT_NOT_FOUND', message: 'Chat not found.' } });
+
+  const messages = await Message.find({
+    chat: chat._id,
+    sender: req.user.sub,
+    _id: mongoose.trusted({ $in: req.body.messageIds }),
+  });
+  if (messages.length !== req.body.messageIds.length) {
+    return res.status(404).json({ error: { code: 'MESSAGE_NOT_FOUND', message: 'One or more selected messages could not be found.' } });
+  }
+
+  const messageObjectIds = messages.map((message) => message._id);
+  const mediaIds = messages
+    .map((message) => message.media
+      ?? message.imageUrl?.match(/^\/api\/media\/([a-fA-F0-9]{24})$/)?.[1])
+    .filter(Boolean);
+  await Message.deleteMany({ _id: mongoose.trusted({ $in: messageObjectIds }) });
+  if (mediaIds.length > 0) {
+    await Media.deleteMany({
+      _id: mongoose.trusted({ $in: mediaIds }),
+      chat: chat._id,
+    });
+  }
+  for (const message of messages) {
+    emitToParticipants(req.app.get('io'), chat, 'chat:message_deleted', {
+      chatId: chat._id.toString(),
+      messageId: message._id.toString(),
+    });
+  }
+  res.json({ ok: true, deletedCount: messages.length });
 }));
 
 router.delete('/:chatId/messages', requireAuth, asyncHandler(async (req, res) => {

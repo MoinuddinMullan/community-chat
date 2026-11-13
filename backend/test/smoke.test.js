@@ -307,6 +307,22 @@ test('users can search for a neighbour, send a request, and accept it to create 
   assert.deepEqual(downloaded.body, imageBytes);
   assert.equal(emitted.length, 6);
   assert.ok(emitted.some(({ payload }) => payload.message.type === 'image'));
+  const unreadChats = await request(app).get('/api/chats').set(moinAuth);
+  assert.equal(unreadChats.body[0].unreadCount, 2);
+
+  const markedRead = await request(app)
+    .post(`/api/chats/${chats.body[0].chatId}/read`)
+    .set(moinAuth);
+  assert.equal(markedRead.status, 200);
+  const readEvent = emitted.find(({ event }) => event === 'chat:read');
+  assert.equal(readEvent.room, `user:${aishaUserId}`);
+  assert.ok(readEvent.payload.messageIds.includes(sentMessage.body.message.id));
+  const readHistory = await request(app)
+    .get(`/api/chats/${chats.body[0].chatId}/messages`)
+    .set(aishaAuth);
+  assert.ok(readHistory.body.find((message) => message.id === sentMessage.body.message.id).readAt);
+  const readChats = await request(app).get('/api/chats').set(moinAuth);
+  assert.equal(readChats.body[0].unreadCount, 0);
 
   const expiredAt = new Date(Date.now() - 1000);
   const purgeAt = new Date(Date.now() + 86400000);
@@ -376,20 +392,21 @@ test('users can search for a neighbour, send a request, and accept it to create 
   const forbiddenDownload = await request(app).get(uploaded.body.imageUrl);
   assert.equal(forbiddenDownload.status, 401);
 
-  const deniedDelete = await request(app)
-    .delete(`/api/chats/${chats.body[0].chatId}/messages/${sentMessage.body.message.id}`)
-    .set(moinAuth);
-  assert.equal(deniedDelete.status, 404);
+  const deniedBulkDelete = await request(app)
+    .post(`/api/chats/${chats.body[0].chatId}/messages/delete`)
+    .set(moinAuth)
+    .send({ messageIds: [sentMessage.body.message.id] });
+  assert.equal(deniedBulkDelete.status, 404);
 
-  const deletedText = await request(app)
-    .delete(`/api/chats/${chats.body[0].chatId}/messages/${sentMessage.body.message.id}`)
-    .set(aishaAuth);
-  assert.equal(deletedText.status, 200);
+  const bulkDeleted = await request(app)
+    .post(`/api/chats/${chats.body[0].chatId}/messages/delete`)
+    .set(aishaAuth)
+    .send({
+      messageIds: [sentMessage.body.message.id, imageMessage.body.message.id],
+    });
+  assert.equal(bulkDeleted.status, 200);
+  assert.equal(bulkDeleted.body.deletedCount, 2);
 
-  const deletedImage = await request(app)
-    .delete(`/api/chats/${chats.body[0].chatId}/messages/${imageMessage.body.message.id}`)
-    .set(aishaAuth);
-  assert.equal(deletedImage.status, 200);
   const deletedImageDownload = await request(app)
     .get(uploaded.body.imageUrl)
     .set(moinAuth);
@@ -426,7 +443,7 @@ test('users can search for a neighbour, send a request, and accept it to create 
   assert.equal(clearedImageDownload.status, 404);
   assert.ok(emitted.some(({ event }) => event === 'chat:message_deleted'));
   assert.ok(emitted.some(({ event }) => event === 'chat:cleared'));
-  assert.equal(emitted.length, 14);
+  assert.equal(emitted.length, 15);
   app.set('io', undefined);
 });
 
