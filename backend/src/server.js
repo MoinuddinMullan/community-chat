@@ -25,11 +25,18 @@ server.on('error', (error) => {
 });
 
 async function start() {
-  await connectDB();
-  schedulePurgeJobs();
+  // Start the HTTP server immediately so Render detects an open port
   server.listen(PORT, HOST, () => {
     console.log(`Server is running on port ${PORT}`);
   });
+
+  // Connect to the database and schedule jobs in the background
+  try {
+    await connectDB();
+    schedulePurgeJobs();
+  } catch (error) {
+    console.error('Background initialization failed:', error);
+  }
 }
 
 start().catch((error) => {
