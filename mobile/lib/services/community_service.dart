@@ -13,9 +13,9 @@ class CommunityApiService {
       _dio = Dio(
         BaseOptions(
           baseUrl: AppConfig.apiBaseUrl,
-          connectTimeout: const Duration(seconds: 12),
-          sendTimeout: const Duration(seconds: 60),
-          receiveTimeout: const Duration(seconds: 30),
+          connectTimeout: AppConfig.connectTimeout,
+          sendTimeout: AppConfig.sendTimeout,
+          receiveTimeout: AppConfig.receiveTimeout,
           headers: {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer $accessToken',
@@ -252,6 +252,7 @@ class CommunityApiService {
     final socket = io.io(AppConfig.apiBaseUrl, <String, dynamic>{
       'transports': ['websocket'],
       'autoConnect': false,
+      'timeout': 60000,
       'auth': {'token': _accessToken},
     });
     socket.on('chat:message', (data) {
