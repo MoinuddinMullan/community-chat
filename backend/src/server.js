@@ -24,17 +24,21 @@ server.on('error', (error) => {
   process.exit(1);
 });
 
-async function start() {
-  await connectDB();
-  schedulePurgeJobs();
-  server.listen(PORT, HOST, () => {
-    console.log(`Server is running on port ${PORT}`);
-  });
+// Start the HTTP server immediately so Render detects an open port
+server.listen(PORT, HOST, () => {
+  console.log(`Server is running on port ${PORT}`);
+});
+
+// Connect to the database and schedule jobs in the background
+async function init() {
+  try {
+    await connectDB();
+    schedulePurgeJobs();
+  } catch (error) {
+    console.error('Background initialization failed:', error);
+  }
 }
 
-start().catch((error) => {
-  console.error('Backend startup failed; shutting down.', error);
-  process.exit(1);
-});
+init();
 
 export { app, io, server };
